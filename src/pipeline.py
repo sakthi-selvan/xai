@@ -10,6 +10,7 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
 from src.data.synthetic import build_showcase_cases, generate_cohort
+from src.evaluation import evaluate_models
 from src.explain.shap_explain import ShapExplainer
 from src.models.agents import CalibratedBaseline, ClinicalAgents
 from src.models.ensemble import AdaptiveEnsemble
@@ -50,6 +51,24 @@ def build_pipeline(seed: int = 42) -> PipelineBundle:
     y_true = labels[test_idx]
     y_ens = ensemble.predict_batch(frame.iloc[test_idx].reset_index(drop=True), vitals[test_idx])
     y_base = baseline.predict_proba(frame.iloc[test_idx], vitals[test_idx])
+    agent_predictions = {
+        agent.short: np.asarray(
+            [
+                next(
+                    prediction.probability
+                    for prediction in agents.predict_one(frame.iloc[i], vitals[i])
+                    if prediction.short == agent.short
+                )
+                for i in test_idx
+            ]
+        )
+        for agent in agents.predict_one(frame.iloc[test_idx[0]], vitals[test_idx[0]])
+    }
+    model_report = evaluate_models(
+        y_true,
+        {**agent_predictions, "Adaptive Ensemble": y_ens, "Logistic Baseline": y_base},
+        seed,
+    )
     metrics = {
         "ensemble_auroc": float(roc_auc_score(y_true, y_ens)),
         "ensemble_auprc": float(average_precision_score(y_true, y_ens)),
@@ -58,6 +77,7 @@ def build_pipeline(seed: int = 42) -> PipelineBundle:
         "prevalence": float(labels.mean()),
         "n_patients": int(len(frame)),
         "n_test": int(len(test_idx)),
+        "model_report": model_report,
     }
 
     shap = ShapExplainer(agents.tabnet, frame.iloc[train_idx])

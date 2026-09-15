@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import textwrap
+import json
 from pathlib import Path
 
 import numpy as np
@@ -80,6 +81,56 @@ def get_cohort_preds(bundle):
                 bundle.frame, bundle.vitals
             )
     return st.session_state.cohort_preds
+
+
+def build_admin_patient(values: dict[str, float | str]) -> dict:
+    """Create a live-demo-compatible patient from admin-entered values."""
+    current = np.array(
+        [
+            values["hr"],
+            values["sbp"],
+            values["dbp"],
+            values["rr"],
+            values["spo2"],
+            values["temp"],
+        ],
+        dtype=float,
+    )
+    severity = float(values["sofa"]) / 15 + float(values["lactate"]) / 10
+    trend = np.linspace(-severity * 0.8, 0.0, 24)
+    vitals = np.tile(current, (24, 1))
+    vitals[:, 0] += trend * 25
+    vitals[:, 1] -= trend * 20
+    vitals[:, 3] += trend * 8
+    vitals[:, 4] -= trend * 6
+    vitals[:, 5] += trend * 0.8
+    vitals[:, 0] = vitals[:, 0].clip(40, 200)
+    vitals[:, 1] = vitals[:, 1].clip(60, 220)
+    vitals[:, 2] = vitals[:, 2].clip(30, 130)
+    vitals[:, 3] = vitals[:, 3].clip(8, 45)
+    vitals[:, 4] = vitals[:, 4].clip(70, 100)
+    vitals[:, 5] = vitals[:, 5].clip(35, 41)
+
+    row = pd.Series(
+        {
+            "patient_id": values["patient_id"],
+            **{column: values[column] for column in DEMOGRAPHIC_COLS + LAB_COLS},
+            "mortality": np.nan,
+            "true_risk": np.nan,
+        }
+    )
+    gender = "Male" if int(values["gender"]) else "Female"
+    return {
+        "patient_id": values["patient_id"],
+        "summary": (
+            f"{int(values['age'])}y {gender} · SOFA {int(values['sofa'])} · "
+            f"Lactate {values['lactate']:.1f} · admin-entered case"
+        ),
+        "risk_tier": "New",
+        "label": None,
+        "row": row,
+        "vitals": vitals,
+    }
 
 
 def gauge_figure(prob: float, ci_low: float, ci_high: float) -> go.Figure:
@@ -377,7 +428,115 @@ def predict_patient(bundle, row, vitals, mc_samples: int = 40):
     return agents, ens, unc, attn, shap_bundle, counterfactuals
 
 
+def render_model_report(bundle):
+    report = bundle.metrics.get("model_report")
+    if report is None:
+        report_path = ROOT / "reports" / "training_summary.json"
+        if report_path.exists():
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        else:
+            st.info("Model evaluation report is not available yet. Restart the pipeline to generate it.")
+            return
+    st.markdown('<div class="section-title">Training and model evaluation</div>', unsafe_allow_html=True)
+    kpi_cards(
+        [
+            ("Training status", "Complete", f"Holdout n={report['n_holdout']} · seed {report['seed']}"),
+            ("Models evaluated", str(len(report["models"])), "Agents + ensemble + baseline"),
+            ("Positive prevalence", f"{report['positive_prevalence']:.1%}", "Holdout mortality labels"),
+        ]
+    )
+    metrics_df = pd.DataFrame(report["models"])
+    display_metrics = metrics_df[
+        ["model", "accuracy", "precision", "recall", "f1", "auroc", "auprc"]
+    ].copy()
+    for column in display_metrics.columns[1:]:
+        display_metrics[column] = display_metrics[column].map(lambda value: f"{value:.3f}")
+    display_metrics = display_metrics.rename(
+        columns={
+            "model": "Model",
+            "accuracy": "Accuracy",
+            "precision": "Precision",
+            "recall": "Recall",
+            "f1": "F1",
+            "auroc": "AUROC",
+            "auprc": "AUPRC",
+        }
+    )
+    st.dataframe(display_metrics, hide_index=True, use_container_width=True)
+
+    left, right = st.columns([1.1, 1])
+    with left:
+        selected_model = st.selectbox("Confusion matrix", metrics_df["model"].tolist())
+        matrix = metrics_df.loc[metrics_df["model"] == selected_model].iloc[0]
+        confusion_df = pd.DataFrame(
+            [
+                [matrix["true_negatives"], matrix["false_positives"]],
+                [matrix["false_negatives"], matrix["true_positives"]],
+            ],
+            index=["Actual negative", "Actual positive"],
+            columns=["Predicted negative", "Predicted positive"],
+        ).astype(int)
+        st.dataframe(confusion_df, use_container_width=True)
+    with right:
+        st.markdown("#### Common model insights")
+        for issue in report["issues"]:
+            st.warning(issue)
+        st.caption("Reports are regenerated when the cached pipeline is trained.")
+
+
 def render_admin_dashboard(bundle, preds: np.ndarray):
+    st.markdown('<div class="section-title">Add patient for live test</div>', unsafe_allow_html=True)
+    with st.form("admin_add_patient"):
+        st.caption("Enter a patient profile and current vitals. The app will create a 24-hour trend for the live demo.")
+        identity, acuity, current_vitals = st.columns([1.1, 1.1, 1.4])
+        with identity:
+            patient_id = st.text_input("Patient ID", value="ADMIN-001")
+            age = st.number_input("Age", min_value=18, max_value=95, value=66)
+            gender = st.selectbox("Gender", [0, 1], format_func=lambda value: "Female" if value == 0 else "Male")
+            bmi = st.number_input("BMI", min_value=16.0, max_value=45.0, value=27.0, step=0.1)
+            charlson = st.number_input("Charlson index", min_value=0.0, max_value=10.0, value=3.0, step=1.0)
+            los_days = st.number_input("ICU LOS (days)", min_value=0.5, max_value=40.0, value=4.0, step=0.5)
+        with acuity:
+            sofa = st.number_input("SOFA score", min_value=0.0, max_value=15.0, value=6.0, step=1.0)
+            wbc = st.number_input("WBC", min_value=2.0, max_value=35.0, value=11.0, step=0.1)
+            hemoglobin = st.number_input("Hemoglobin", min_value=6.0, max_value=16.0, value=10.5, step=0.1)
+            platelets = st.number_input("Platelets", min_value=20.0, max_value=500.0, value=180.0, step=1.0)
+            creatinine = st.number_input("Creatinine", min_value=0.4, max_value=8.0, value=1.4, step=0.1)
+            bun = st.number_input("BUN", min_value=5.0, max_value=120.0, value=28.0, step=1.0)
+        with current_vitals:
+            lactate = st.number_input("Lactate", min_value=0.5, max_value=15.0, value=2.4, step=0.1)
+            bilirubin = st.number_input("Bilirubin", min_value=0.2, max_value=12.0, value=1.2, step=0.1)
+            glucose = st.number_input("Glucose", min_value=60.0, max_value=400.0, value=145.0, step=1.0)
+            sodium = st.number_input("Sodium", min_value=120.0, max_value=155.0, value=138.0, step=1.0)
+            potassium = st.number_input("Potassium", min_value=2.5, max_value=6.5, value=4.2, step=0.1)
+            hr = st.number_input("HR", min_value=40.0, max_value=200.0, value=92.0, step=1.0)
+            sbp = st.number_input("SBP", min_value=60.0, max_value=220.0, value=118.0, step=1.0)
+            dbp = st.number_input("DBP", min_value=30.0, max_value=130.0, value=68.0, step=1.0)
+            rr = st.number_input("RR", min_value=8.0, max_value=45.0, value=20.0, step=1.0)
+            spo2 = st.number_input("SpO2", min_value=70.0, max_value=100.0, value=95.0, step=1.0)
+            temp = st.number_input("Temperature", min_value=35.0, max_value=41.0, value=37.0, step=0.1)
+        submitted = st.form_submit_button("Add patient to live demo", type="primary", use_container_width=True)
+
+    if submitted:
+        patient_id = patient_id.strip()
+        added = st.session_state.setdefault("added_patients", {})
+        if not patient_id:
+            st.error("Patient ID is required.")
+        elif patient_id in bundle.frame["patient_id"].values or patient_id in added:
+            st.error(f"Patient ID {patient_id} already exists.")
+        else:
+            values = locals()
+            added[patient_id] = build_admin_patient(
+                {key: values[key] for key in ["patient_id", *DEMOGRAPHIC_COLS, *LAB_COLS, *VITAL_NAMES]}
+            )
+            st.success(f"{patient_id} added. Open Live Demo, select this patient, and run the live prediction.")
+
+    added_patients = st.session_state.get("added_patients", {})
+    if added_patients:
+        st.caption(f"Admin-added patients available in Live Demo: {', '.join(added_patients)}")
+
+    render_model_report(bundle)
+
     frame = bundle.frame.copy()
     frame["pred_risk"] = preds
     frame["risk_tier"] = [risk_tier(p) for p in preds]
@@ -561,6 +720,8 @@ def render_live_demo(bundle, mc_samples: int):
     labels = {
         f"{c['patient_id']} · {c['risk_tier']} — {c['summary']}": c for c in bundle.showcase
     }
+    for case in st.session_state.get("added_patients", {}).values():
+        labels[f"{case['patient_id']} · Admin added — {case['summary']}"] = case
     # Prefer a critical/elevated case as default for impactful demo
     default_idx = 0
     for i, c in enumerate(bundle.showcase):
@@ -572,12 +733,16 @@ def render_live_demo(bundle, mc_samples: int):
         "Demo patient",
         list(labels.keys()),
         index=default_idx,
-        help="Curated cases spanning Low → Critical risk",
+        help="Choose a curated or admin-added case for the live test",
     )
     case = labels[choice]
-    idx = case["row_index"]
-    row = bundle.frame.iloc[idx]
-    vitals = bundle.vitals[idx]
+    if "row" in case:
+        row = case["row"]
+        vitals = case["vitals"]
+    else:
+        idx = case["row_index"]
+        row = bundle.frame.iloc[idx]
+        vitals = bundle.vitals[idx]
 
     col_a, col_b, col_c = st.columns([1, 1, 1])
     with col_a:
@@ -600,7 +765,7 @@ def render_live_demo(bundle, mc_samples: int):
             f"""
             <div class="panel">
               <b>{case['patient_id']}</b> — {case['summary']}<br/>
-              Ground-truth label (demo): <b>{'Mortality event' if case['label'] else 'Survived'}</b>
+                            {'Ground-truth label (demo): <b>' + ('Mortality event' if case['label'] else 'Survived') + '</b>' if case['label'] is not None else 'Ground-truth label: <b>Not provided for admin-added case</b>'}
               · Predicted tier: <span class="badge {badge}">{tier}</span>
             </div>
             """

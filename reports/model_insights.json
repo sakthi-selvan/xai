@@ -1,0 +1,16 @@
+{
+  "issues": [
+    "TabNet: recall is 62.1%; review missed positive cases.",
+    "TabNet: precision is 64.3%; review false alarms.",
+    "TabNet: false negatives (11) exceed false positives (10).",
+    "Bi-LSTM: recall is 62.1%; review missed positive cases.",
+    "Bi-LSTM: precision is 69.2%; review false alarms.",
+    "Bi-LSTM: false negatives (11) exceed false positives (8).",
+    "CNN-1D: recall is 65.5%; review missed positive cases.",
+    "CNN-1D: precision is 65.5%; review false alarms.",
+    "Adaptive Ensemble: recall is 69.0%; review missed positive cases.",
+    "Adaptive Ensemble: precision is 64.5%; review false alarms.",
+    "Logistic Baseline: recall is 65.5%; review missed positive cases.",
+    "Logistic Baseline: precision is 61.3%; review false alarms."
+  ]
+}

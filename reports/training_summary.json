@@ -1,0 +1,87 @@
+{
+  "status": "trained_and_evaluated",
+  "seed": 42,
+  "n_holdout": 70,
+  "positive_prevalence": 0.4142857142857143,
+  "models": [
+    {
+      "model": "TabNet",
+      "accuracy": 0.7,
+      "precision": 0.6428571428571429,
+      "recall": 0.6206896551724138,
+      "f1": 0.631578947368421,
+      "auroc": 0.7729184188393607,
+      "auprc": 0.7645372703138245,
+      "true_negatives": 31,
+      "false_positives": 10,
+      "false_negatives": 11,
+      "true_positives": 18
+    },
+    {
+      "model": "Bi-LSTM",
+      "accuracy": 0.7285714285714285,
+      "precision": 0.6923076923076923,
+      "recall": 0.6206896551724138,
+      "f1": 0.6545454545454545,
+      "auroc": 0.7905803195962995,
+      "auprc": 0.7373029638520954,
+      "true_negatives": 33,
+      "false_positives": 8,
+      "false_negatives": 11,
+      "true_positives": 18
+    },
+    {
+      "model": "CNN-1D",
+      "accuracy": 0.7142857142857143,
+      "precision": 0.6551724137931034,
+      "recall": 0.6551724137931034,
+      "f1": 0.6551724137931034,
+      "auroc": 0.7603027754415475,
+      "auprc": 0.6961426973086007,
+      "true_negatives": 31,
+      "false_positives": 10,
+      "false_negatives": 10,
+      "true_positives": 19
+    },
+    {
+      "model": "Adaptive Ensemble",
+      "accuracy": 0.7142857142857143,
+      "precision": 0.6451612903225806,
+      "recall": 0.6896551724137931,
+      "f1": 0.6666666666666666,
+      "auroc": 0.8107653490328006,
+      "auprc": 0.7953470191121605,
+      "true_negatives": 30,
+      "false_positives": 11,
+      "false_negatives": 9,
+      "true_positives": 20
+    },
+    {
+      "model": "Logistic Baseline",
+      "accuracy": 0.6857142857142857,
+      "precision": 0.6129032258064516,
+      "recall": 0.6551724137931034,
+      "f1": 0.6333333333333333,
+      "auroc": 0.7863751051303616,
+      "auprc": 0.6891752637816525,
+      "true_negatives": 29,
+      "false_positives": 12,
+      "false_negatives": 10,
+      "true_positives": 19
+    }
+  ],
+  "issues": [
+    "TabNet: recall is 62.1%; review missed positive cases.",
+    "TabNet: precision is 64.3%; review false alarms.",
+    "TabNet: false negatives (11) exceed false positives (10).",
+    "Bi-LSTM: recall is 62.1%; review missed positive cases.",
+    "Bi-LSTM: precision is 69.2%; review false alarms.",
+    "Bi-LSTM: false negatives (11) exceed false positives (8).",
+    "CNN-1D: recall is 65.5%; review missed positive cases.",
+    "CNN-1D: precision is 65.5%; review false alarms.",
+    "Adaptive Ensemble: recall is 69.0%; review missed positive cases.",
+    "Adaptive Ensemble: precision is 64.5%; review false alarms.",
+    "Logistic Baseline: recall is 65.5%; review missed positive cases.",
+    "Logistic Baseline: precision is 61.3%; review false alarms."
+  ]
+}

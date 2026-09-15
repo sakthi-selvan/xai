@@ -1,0 +1,21 @@
+model,actual,predicted,count
+TabNet,0,0,31
+TabNet,0,1,10
+TabNet,1,0,11
+TabNet,1,1,18
+Bi-LSTM,0,0,33
+Bi-LSTM,0,1,8
+Bi-LSTM,1,0,11
+Bi-LSTM,1,1,18
+CNN-1D,0,0,31
+CNN-1D,0,1,10
+CNN-1D,1,0,10
+CNN-1D,1,1,19
+Adaptive Ensemble,0,0,30
+Adaptive Ensemble,0,1,11
+Adaptive Ensemble,1,0,9
+Adaptive Ensemble,1,1,20
+Logistic Baseline,0,0,29
+Logistic Baseline,0,1,12
+Logistic Baseline,1,0,10
+Logistic Baseline,1,1,19
